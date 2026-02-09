@@ -510,9 +510,12 @@
                     }
                     return;
                 }
-                if (patient.status === 'done' && phase === 'waiting') {
+                // When patient is done → show review (from any phase except review/thankyou)
+                if (patient.status === 'done' && phase !== 'review' && phase !== 'thankyou') {
                     setPhase('review');
-                } else if (patient.status !== 'done' && phase === 'join') {
+                }
+                // When patient exists and is not done → show waiting status
+                else if (patient.status !== 'done' && phase === 'join') {
                     setPhase('waiting');
                 }
             }, [patient, patientId, phase]);
