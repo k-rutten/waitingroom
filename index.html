@@ -111,6 +111,29 @@
         }
         .fade-in { animation: fade-in 0.3s ease-out forwards; }
 
+        /* Splash floating animation */
+        @keyframes float-1 {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-6px); }
+        }
+        @keyframes float-2 {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-8px); }
+        }
+        @keyframes float-3 {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-4px); }
+        }
+        @keyframes splash-fade-up {
+            from { opacity: 0; transform: translateY(16px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes dot-trail {
+            0% { opacity: 0.15; }
+            50% { opacity: 0.4; }
+            100% { opacity: 0.15; }
+        }
+
         /* Print styles */
         @media print {
             .no-print { display: none !important; }
@@ -344,8 +367,24 @@
 
             return (
                 <div className="fade-in" style={{ padding: '16px', maxWidth: '448px', margin: '0 auto' }}>
-                    <div style={{ paddingTop: '48px', paddingBottom: '24px' }}>
-                        <h1 style={{ fontSize: '34px', fontWeight: 700, color: 'var(--label-primary)', letterSpacing: '-0.37px', lineHeight: '41px' }}>Wachtkamer</h1>
+                    <div style={{ paddingTop: '16px' }}>
+                        <button
+                            onClick={onBack}
+                            style={{
+                                display: 'flex', alignItems: 'center', gap: '4px',
+                                background: 'none', border: 'none', cursor: 'pointer',
+                                fontSize: '17px', color: 'var(--system-blue)', fontFamily: 'inherit',
+                                padding: '8px 0',
+                            }}
+                        >
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                <polyline points="15 18 9 12 15 6"/>
+                            </svg>
+                            Terug
+                        </button>
+                    </div>
+                    <div style={{ paddingTop: '16px', paddingBottom: '24px' }}>
+                        <h1 style={{ fontSize: '34px', fontWeight: 700, color: 'var(--label-primary)', letterSpacing: '-0.37px', lineHeight: '41px' }}>Aanmelden</h1>
                         <p style={{ fontSize: '15px', color: 'var(--label-secondary)', marginTop: '8px', lineHeight: '20px' }}>Voer uw achternaam in om u aan te melden</p>
                     </div>
 
@@ -555,7 +594,7 @@
 
         function PatientView({ data, setData }) {
             const [patientId, setPatientId] = useState(() => localStorage.getItem(PATIENT_ID_KEY) || null);
-            const [phase, setPhase] = useState('join'); // join | waiting | review | thankyou
+            const [phase, setPhase] = useState('splash'); // splash | join | waiting | review | thankyou
             const [showConfetti, setShowConfetti] = useState(false);
             const { addToast } = useToast();
 
@@ -564,8 +603,8 @@
             // Determine phase based on patient state
             useEffect(() => {
                 if (!patient || !patientId) {
-                    if (phase !== 'review' && phase !== 'thankyou') {
-                        setPhase('join');
+                    if (phase !== 'review' && phase !== 'thankyou' && phase !== 'join') {
+                        setPhase('splash');
                     }
                     return;
                 }
@@ -574,7 +613,7 @@
                     setPhase('review');
                 }
                 // When patient exists and is not done → show waiting status
-                else if (patient.status !== 'done' && phase === 'join') {
+                else if (patient.status !== 'done' && (phase === 'splash' || phase === 'join')) {
                     setPhase('waiting');
                 }
             }, [patient, patientId, phase]);
@@ -600,7 +639,7 @@
                 setData(prev => ({ ...prev, queue: prev.queue.filter(p => p.id !== patientId) }));
                 setPatientId(null);
                 localStorage.removeItem(PATIENT_ID_KEY);
-                setPhase('join');
+                setPhase('splash');
                 addToast('U bent afgemeld');
             };
 
@@ -621,14 +660,17 @@
             const handleThankYouDone = useCallback(() => {
                 setPatientId(null);
                 localStorage.removeItem(PATIENT_ID_KEY);
-                setPhase('join');
+                setPhase('splash');
                 setShowConfetti(false);
             }, []);
+
+            const waitingCount = data.queue.filter(p => p.status !== 'done').length;
 
             if (phase === 'thankyou') return <PatientThankYou showConfetti={showConfetti} onDone={handleThankYouDone} />;
             if (phase === 'review') return <PatientReview onSubmit={handleReviewSubmit} onSkip={handleReviewSkip} />;
             if (phase === 'waiting' && patient) return <PatientStatus data={data} patientId={patientId} onLeave={handleLeave} />;
-            return <PatientJoinForm data={data} onJoin={handleJoin} />;
+            if (phase === 'join') return <PatientJoinForm data={data} onJoin={handleJoin} onBack={() => setPhase('splash')} />;
+            return <PatientSplash onStart={() => setPhase('join')} waitingCount={waitingCount} />;
         }
 
 
