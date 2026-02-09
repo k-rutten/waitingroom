@@ -273,7 +273,66 @@
 
         // ─── Patient View ─────────────────────────────────────────────
 
-        function PatientJoinForm({ data, onJoin }) {
+        function PatientSplash({ onStart, waitingCount }) {
+            return (
+                <div className="fade-in" style={{
+                    padding: '16px', maxWidth: '448px', margin: '0 auto',
+                    minHeight: 'calc(100vh - 72px)', display: 'flex', flexDirection: 'column',
+                    justifyContent: 'center', alignItems: 'center', textAlign: 'center',
+                }}>
+                    {/* Visual icon */}
+                    <div style={{ marginBottom: '32px' }}>
+                        <div style={{
+                            width: '96px', height: '96px', borderRadius: '24px',
+                            background: 'linear-gradient(135deg, rgba(0,122,255,0.12) 0%, rgba(90,200,250,0.12) 100%)',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            margin: '0 auto',
+                        }}>
+                            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--system-blue)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                                <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+                                <circle cx="9" cy="7" r="4"/>
+                                <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+                                <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+                            </svg>
+                        </div>
+                    </div>
+
+                    {/* Title & description */}
+                    <h1 style={{ fontSize: '34px', fontWeight: 700, color: 'var(--label-primary)', letterSpacing: '-0.37px', lineHeight: '41px', marginBottom: '12px' }}>
+                        Wachtkamer
+                    </h1>
+                    <p style={{ fontSize: '17px', color: 'var(--label-secondary)', lineHeight: '24px', maxWidth: '300px', marginBottom: '40px' }}>
+                        Meld u aan voor de wachtrij en volg uw positie in realtime
+                    </p>
+
+                    {/* CTA button */}
+                    <button
+                        onClick={onStart}
+                        style={{
+                            width: '100%', maxWidth: '320px', height: '54px', borderRadius: '13px',
+                            background: 'var(--system-blue)', color: 'white',
+                            border: 'none', cursor: 'pointer',
+                            fontSize: '17px', fontWeight: 600,
+                            transition: 'transform 0.1s ease',
+                            fontFamily: 'inherit',
+                        }}
+                        onMouseDown={e => e.currentTarget.style.transform = 'scale(0.97)'}
+                        onMouseUp={e => e.currentTarget.style.transform = 'scale(1)'}
+                        onMouseLeave={e => e.currentTarget.style.transform = 'scale(1)'}
+                    >
+                        Aanmelden wachtrij
+                    </button>
+
+                    {waitingCount > 0 && (
+                        <p style={{ fontSize: '13px', color: 'var(--label-tertiary)', marginTop: '16px' }}>
+                            Momenteel {waitingCount} {waitingCount === 1 ? 'persoon' : 'personen'} in de wachtrij
+                        </p>
+                    )}
+                </div>
+            );
+        }
+
+        function PatientJoinForm({ data, onJoin, onBack }) {
             const [lastName, setLastName] = useState('');
             const inputRef = useRef(null);
             const waitingCount = data.queue.filter(p => p.status !== 'done').length;
