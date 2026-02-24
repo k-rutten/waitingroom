@@ -150,31 +150,22 @@
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
     <script type="text/babel">
         const { useState, useEffect, useCallback, useRef, useContext, createContext } = React;
 
-        // ─── Data Layer ───────────────────────────────────────────────
+        // ─── Data Layer (Supabase) ──────────────────────────────────
 
-        const STORAGE_KEY = 'waitingroom_queue';
         const PATIENT_ID_KEY = 'waitingroom_my_id';
 
-        function createEmptyData() {
-            return {
-                queue: [],
-                settings: { doctorPin: '1234', createdDate: new Date().toISOString().split('T')[0] }
-            };
-        }
+        const SUPABASE_URL = 'https://yzwdgstkgzssugifoynx.supabase.co';
+        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inl6d2Rnc3RrZ3pzc3VnaWZveW54Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE5NDY3MjEsImV4cCI6MjA4NzUyMjcyMX0.zMApSn1S5CvLVnXy98jA9XfGv7u0G3cCk08OlL0Wyx4';
 
-        function loadData() {
-            try {
-                const raw = localStorage.getItem(STORAGE_KEY);
-                return raw ? JSON.parse(raw) : createEmptyData();
-            } catch { return createEmptyData(); }
-        }
+        const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-        function saveData(data) {
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+        function getTodayDate() {
+            return new Date().toISOString().split('T')[0];
         }
 
         function generateId() {
@@ -184,6 +175,82 @@
         function formatTime(timestamp) {
             const d = new Date(timestamp);
             return d.toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' });
+        }
+
+        async function fetchQueue() {
+            const { data, error } = await sb
+                .from('patients')
+                .select('*')
+                .eq('queue_date', getTodayDate())
+                .order('joined_at', { ascending: true });
+            if (error) { console.error('fetchQueue error:', error); return []; }
+            return data.map(row => ({
+                id: row.id,
+                lastName: row.last_name,
+                number: row.number,
+                joinedAt: row.joined_at,
+                status: row.status,
+                startedAt: row.started_at,
+                completedAt: row.completed_at,
+                rating: row.rating,
+            }));
+        }
+
+        async function getNextNumber() {
+            const { data } = await sb
+                .from('patients')
+                .select('number')
+                .eq('queue_date', getTodayDate())
+                .order('number', { ascending: false })
+                .limit(1);
+            return (data?.length > 0 ? data[0].number : 0) + 1;
+        }
+
+        async function insertPatient(patient) {
+            const { error } = await sb.from('patients').insert({
+                id: patient.id,
+                last_name: patient.lastName,
+                number: patient.number,
+                status: patient.status,
+                joined_at: patient.joinedAt,
+                started_at: patient.startedAt,
+                completed_at: patient.completedAt,
+                rating: patient.rating,
+                queue_date: getTodayDate(),
+            });
+            if (error) console.error('insertPatient error:', error);
+            return !error;
+        }
+
+        async function updatePatient(id, updates) {
+            const dbUpdates = {};
+            if ('status' in updates) dbUpdates.status = updates.status;
+            if ('startedAt' in updates) dbUpdates.started_at = updates.startedAt;
+            if ('completedAt' in updates) dbUpdates.completed_at = updates.completedAt;
+            if ('rating' in updates) dbUpdates.rating = updates.rating;
+            const { error } = await sb.from('patients').update(dbUpdates).eq('id', id);
+            if (error) console.error('updatePatient error:', error);
+            return !error;
+        }
+
+        async function deletePatient(id) {
+            const { error } = await sb.from('patients').delete().eq('id', id);
+            if (error) console.error('deletePatient error:', error);
+            return !error;
+        }
+
+        async function deleteCompletedPatients() {
+            const { error } = await sb.from('patients').delete()
+                .eq('queue_date', getTodayDate()).eq('status', 'done');
+            if (error) console.error('deleteCompletedPatients error:', error);
+            return !error;
+        }
+
+        async function deleteAllTodayPatients() {
+            const { error } = await sb.from('patients').delete()
+                .eq('queue_date', getTodayDate());
+            if (error) console.error('deleteAllTodayPatients error:', error);
+            return !error;
         }
 
         // ─── Toast System ─────────────────────────────────────────────
@@ -298,7 +365,8 @@
 
         // ─── Patient View ─────────────────────────────────────────────
 
-        function PatientSplash({ onStart, waitingCount }) {
+        function PatientSplash({ onJoin, waitingCount }) {
+            const [lastName, setLastName] = useState('');
             // Floating icons — scattered organically like Wealthsimple/Canopi
             const floatingIcons = [
                 { top: '30%', left: '-4%', size: 64, rot: -12, delay: 0.2, dur: 4, color: '#E8F5E9', iconColor: '#34C759', icon: (
@@ -426,127 +494,67 @@
 
                         <div style={{
                             maxWidth: '380px', margin: '0 auto',
-                            opacity: 0, animation: 'splash-fade-up 0.5s ease-out 0.7s forwards',
+                            opacity: 0, animation: 'splash-fade-up 0.5s ease-out 0.65s forwards',
                         }}>
-                            <button
-                                onClick={onStart}
-                                style={{
-                                    width: '100%', height: '56px', borderRadius: '16px',
-                                    background: '#1C1C1E', color: 'white',
-                                    border: 'none', cursor: 'pointer',
-                                    fontSize: '17px', fontWeight: 600,
-                                    transition: 'transform 0.1s ease',
-                                    fontFamily: 'inherit',
-                                    boxShadow: '0 4px 20px rgba(0, 0, 0, 0.12)',
-                                }}
-                                onMouseDown={e => e.currentTarget.style.transform = 'scale(0.97)'}
-                                onMouseUp={e => e.currentTarget.style.transform = 'scale(1)'}
-                                onMouseLeave={e => e.currentTarget.style.transform = 'scale(1)'}
-                            >
-                                Aanmelden wachtrij
-                            </button>
+                            <form onSubmit={(e) => { e.preventDefault(); if (lastName.trim()) onJoin(lastName.trim()); }}>
+                                <input
+                                    type="text"
+                                    value={lastName}
+                                    onChange={e => setLastName(e.target.value)}
+                                    placeholder="Uw achternaam"
+                                    autoComplete="off"
+                                    autoCapitalize="words"
+                                    style={{
+                                        width: '100%', height: '52px', padding: '0 20px',
+                                        background: 'rgba(255,255,255,0.8)',
+                                        backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)',
+                                        borderRadius: '14px',
+                                        border: '1.5px solid rgba(0,0,0,0.06)',
+                                        outline: 'none',
+                                        fontSize: '17px', color: 'var(--label-primary)',
+                                        fontFamily: 'inherit',
+                                        marginBottom: '12px',
+                                        transition: 'border-color 0.2s ease',
+                                        boxSizing: 'border-box',
+                                    }}
+                                    onFocus={e => e.currentTarget.style.borderColor = 'rgba(0,0,0,0.15)'}
+                                    onBlur={e => e.currentTarget.style.borderColor = 'rgba(0,0,0,0.06)'}
+                                />
+                                <button
+                                    type="submit"
+                                    disabled={!lastName.trim()}
+                                    style={{
+                                        width: '100%', height: '56px', borderRadius: '16px',
+                                        background: lastName.trim() ? '#1C1C1E' : '#D1D1D6',
+                                        color: 'white',
+                                        border: 'none', cursor: lastName.trim() ? 'pointer' : 'default',
+                                        fontSize: '17px', fontWeight: 600,
+                                        transition: 'transform 0.1s ease, background 0.2s ease',
+                                        fontFamily: 'inherit',
+                                        boxShadow: lastName.trim() ? '0 4px 20px rgba(0, 0, 0, 0.12)' : 'none',
+                                    }}
+                                    onMouseDown={e => { if (lastName.trim()) e.currentTarget.style.transform = 'scale(0.97)'; }}
+                                    onMouseUp={e => e.currentTarget.style.transform = 'scale(1)'}
+                                    onMouseLeave={e => e.currentTarget.style.transform = 'scale(1)'}
+                                >
+                                    Aanmelden wachtrij
+                                </button>
+                            </form>
                         </div>
                     </div>
                 </div>
             );
         }
 
-        function PatientJoinForm({ data, onJoin, onBack }) {
-            const [lastName, setLastName] = useState('');
-            const inputRef = useRef(null);
-            const waitingCount = data.queue.filter(p => p.status !== 'done').length;
 
-            const handleSubmit = (e) => {
-                e.preventDefault();
-                if (lastName.trim()) onJoin(lastName.trim());
-            };
-
-            return (
-                <div className="fade-in" style={{ padding: '20px', maxWidth: '448px', margin: '0 auto' }}>
-                    <div style={{ paddingTop: '12px' }}>
-                        <button
-                            onClick={onBack}
-                            style={{
-                                display: 'flex', alignItems: 'center', gap: '4px',
-                                background: 'none', border: 'none', cursor: 'pointer',
-                                fontSize: '17px', color: 'var(--system-blue)', fontFamily: 'inherit',
-                                padding: '8px 0',
-                            }}
-                        >
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                                <polyline points="15 18 9 12 15 6"/>
-                            </svg>
-                            Terug
-                        </button>
-                    </div>
-                    <div style={{ paddingTop: '24px', paddingBottom: '32px' }}>
-                        <h1 style={{ fontSize: '34px', fontWeight: 700, color: 'var(--label-primary)', letterSpacing: '-0.5px', lineHeight: '40px' }}>Aanmelden</h1>
-                        <p style={{ fontSize: '16px', color: 'var(--label-secondary)', marginTop: '10px', lineHeight: '22px' }}>Voer uw achternaam in om u aan te melden bij de wachtrij.</p>
-                    </div>
-
-                    <form onSubmit={handleSubmit}>
-                        <div style={{ background: 'white', borderRadius: '16px', padding: '20px', marginBottom: '20px', boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
-                            <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: 'var(--label-tertiary)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '8px' }}>
-                                Achternaam
-                            </label>
-                            <input
-                                ref={inputRef}
-                                type="text"
-                                value={lastName}
-                                onChange={e => setLastName(e.target.value)}
-                                placeholder="Bijv. De Vries"
-                                autoComplete="off"
-                                autoCapitalize="words"
-                                style={{
-                                    width: '100%', height: '50px', padding: '0 16px',
-                                    background: '#F5F5F7', borderRadius: '10px',
-                                    border: '1px solid transparent', outline: 'none',
-                                    fontSize: '17px', color: 'var(--label-primary)',
-                                    fontFamily: 'inherit',
-                                    transition: 'border-color 0.2s ease',
-                                }}
-                                onFocus={e => e.currentTarget.style.borderColor = 'var(--system-blue)'}
-                                onBlur={e => e.currentTarget.style.borderColor = 'transparent'}
-                            />
-                        </div>
-
-                        <button
-                            type="submit"
-                            disabled={!lastName.trim()}
-                            style={{
-                                width: '100%', height: '56px', borderRadius: '16px',
-                                background: lastName.trim() ? '#1C1C1E' : '#D1D1D6',
-                                color: 'white', border: 'none', cursor: lastName.trim() ? 'pointer' : 'default',
-                                fontSize: '17px', fontWeight: 600,
-                                transition: 'background 0.2s ease, transform 0.1s ease',
-                                fontFamily: 'inherit',
-                                boxShadow: lastName.trim() ? '0 4px 20px rgba(0, 0, 0, 0.12)' : 'none',
-                            }}
-                            onMouseDown={e => { if (lastName.trim()) e.currentTarget.style.transform = 'scale(0.97)'; }}
-                            onMouseUp={e => e.currentTarget.style.transform = 'scale(1)'}
-                            onMouseLeave={e => e.currentTarget.style.transform = 'scale(1)'}
-                        >
-                            Aanmelden
-                        </button>
-                    </form>
-
-                    {waitingCount > 0 && (
-                        <p style={{ textAlign: 'center', fontSize: '14px', color: 'var(--label-secondary)', marginTop: '20px' }}>
-                            Er wachten momenteel {waitingCount} {waitingCount === 1 ? 'persoon' : 'personen'}
-                        </p>
-                    )}
-                </div>
-            );
-        }
-
-        function PatientStatus({ data, patientId, onLeave }) {
+        function PatientStatus({ queue, patientId, onLeave }) {
             const [pulseKey, setPulseKey] = useState(0);
             const prevPositionRef = useRef(null);
 
-            const patient = data.queue.find(p => p.id === patientId);
+            const patient = queue.find(p => p.id === patientId);
             if (!patient) return null;
 
-            const activeQueue = data.queue.filter(p => p.status !== 'done');
+            const activeQueue = queue.filter(p => p.status !== 'done');
             const myIndex = activeQueue.findIndex(p => p.id === patientId);
             const peopleAhead = myIndex >= 0 ? myIndex : 0;
             const isMyTurn = patient.status === 'in_progress';
@@ -563,7 +571,7 @@
                     <div style={{ paddingTop: '48px', paddingBottom: '28px' }}>
                         <h1 style={{ fontSize: '34px', fontWeight: 700, color: 'var(--label-primary)', letterSpacing: '-0.5px', lineHeight: '40px' }}>Wachtkamer</h1>
                         <p style={{ fontSize: '16px', color: 'var(--label-secondary)', marginTop: '10px', lineHeight: '22px' }}>
-                            Aangemeld als <span style={{ fontWeight: 600, color: 'var(--label-primary)' }}>{patient.lastName}</span>
+                            Nr. {patient.number}{patient.lastName ? <span style={{ fontWeight: 600, color: 'var(--label-primary)' }}> — {patient.lastName}</span> : null}
                         </p>
                     </div>
 
@@ -706,62 +714,72 @@
             );
         }
 
-        function PatientView({ data, setData }) {
+        function PatientView({ queue, setQueue }) {
             const [patientId, setPatientId] = useState(() => localStorage.getItem(PATIENT_ID_KEY) || null);
-            const [phase, setPhase] = useState('splash'); // splash | join | waiting | review | thankyou
+            const [phase, setPhase] = useState('splash'); // splash | waiting | review | thankyou
             const [showConfetti, setShowConfetti] = useState(false);
             const { addToast } = useToast();
 
-            const patient = patientId ? data.queue.find(p => p.id === patientId) : null;
+            const patient = patientId ? queue.find(p => p.id === patientId) : null;
 
             // Determine phase based on patient state
             useEffect(() => {
                 if (!patient || !patientId) {
-                    if (phase !== 'review' && phase !== 'thankyou' && phase !== 'join') {
+                    if (phase !== 'review' && phase !== 'thankyou') {
                         setPhase('splash');
                     }
                     return;
                 }
-                // When patient is done → show review (from any phase except review/thankyou)
                 if (patient.status === 'done' && phase !== 'review' && phase !== 'thankyou') {
                     setPhase('review');
                 }
-                // When patient exists and is not done → show waiting status
-                else if (patient.status !== 'done' && (phase === 'splash' || phase === 'join')) {
+                else if (patient.status !== 'done' && phase === 'splash') {
                     setPhase('waiting');
                 }
             }, [patient, patientId, phase]);
 
-            const handleJoin = (lastName) => {
+            const handleJoin = async (lastName) => {
+                // Already in queue? Redirect to status instead
+                if (patientId && queue.find(p => p.id === patientId && p.status !== 'done')) {
+                    setPhase('waiting');
+                    addToast('U staat al in de wachtrij');
+                    return;
+                }
+                const number = await getNextNumber();
                 const newPatient = {
                     id: generateId(),
                     lastName,
+                    number,
                     joinedAt: Date.now(),
                     status: 'waiting',
                     startedAt: null,
                     completedAt: null,
                     rating: null,
                 };
-                setData(prev => ({ ...prev, queue: [...prev.queue, newPatient] }));
-                setPatientId(newPatient.id);
-                localStorage.setItem(PATIENT_ID_KEY, newPatient.id);
-                setPhase('waiting');
-                addToast('U bent aangemeld');
+                const success = await insertPatient(newPatient);
+                if (success) {
+                    setQueue(prev => [...prev, newPatient]);
+                    setPatientId(newPatient.id);
+                    localStorage.setItem(PATIENT_ID_KEY, newPatient.id);
+                    setPhase('waiting');
+                    addToast('U bent aangemeld');
+                } else {
+                    addToast('Er ging iets mis. Probeer opnieuw.');
+                }
             };
 
-            const handleLeave = () => {
-                setData(prev => ({ ...prev, queue: prev.queue.filter(p => p.id !== patientId) }));
+            const handleLeave = async () => {
+                await deletePatient(patientId);
+                setQueue(prev => prev.filter(p => p.id !== patientId));
                 setPatientId(null);
                 localStorage.removeItem(PATIENT_ID_KEY);
                 setPhase('splash');
                 addToast('U bent afgemeld');
             };
 
-            const handleReviewSubmit = (rating) => {
-                setData(prev => ({
-                    ...prev,
-                    queue: prev.queue.map(p => p.id === patientId ? { ...p, rating } : p)
-                }));
+            const handleReviewSubmit = async (rating) => {
+                await updatePatient(patientId, { rating });
+                setQueue(prev => prev.map(p => p.id === patientId ? { ...p, rating } : p));
                 setShowConfetti(true);
                 setPhase('thankyou');
             };
@@ -778,13 +796,12 @@
                 setShowConfetti(false);
             }, []);
 
-            const waitingCount = data.queue.filter(p => p.status !== 'done').length;
+            const waitingCount = queue.filter(p => p.status !== 'done').length;
 
             if (phase === 'thankyou') return <PatientThankYou showConfetti={showConfetti} onDone={handleThankYouDone} />;
             if (phase === 'review') return <PatientReview onSubmit={handleReviewSubmit} onSkip={handleReviewSkip} />;
-            if (phase === 'waiting' && patient) return <PatientStatus data={data} patientId={patientId} onLeave={handleLeave} />;
-            if (phase === 'join') return <PatientJoinForm data={data} onJoin={handleJoin} onBack={() => setPhase('splash')} />;
-            return <PatientSplash onStart={() => setPhase('join')} waitingCount={waitingCount} />;
+            if (phase === 'waiting' && patient) return <PatientStatus queue={queue} patientId={patientId} onLeave={handleLeave} />;
+            return <PatientSplash onJoin={handleJoin} waitingCount={waitingCount} />;
         }
 
 
@@ -932,7 +949,7 @@
 
                     <div style={{ flex: 1, minWidth: 0 }}>
                         <p style={{ fontSize: '17px', fontWeight: 600, color: 'var(--label-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                            {patient.lastName}
+                            Nr. {patient.number}{patient.lastName ? ` — ${patient.lastName}` : ''}
                         </p>
                         <p style={{ fontSize: '13px', color: isActive ? 'var(--system-green)' : 'var(--label-secondary)' }}>
                             {isActive ? (
@@ -999,46 +1016,44 @@
             );
         }
 
-        function DoctorView({ data, setData }) {
+        function DoctorView({ queue, setQueue }) {
             const [showCompleted, setShowCompleted] = useState(false);
             const [showResetConfirm, setShowResetConfirm] = useState(false);
             const [showQR, setShowQR] = useState(false);
             const { addToast } = useToast();
 
-            const activeQueue = data.queue.filter(p => p.status !== 'done');
-            const completedQueue = data.queue.filter(p => p.status === 'done');
-            const waitingCount = data.queue.filter(p => p.status === 'waiting').length;
-            const inProgressCount = data.queue.filter(p => p.status === 'in_progress').length;
+            const activeQueue = queue.filter(p => p.status !== 'done');
+            const completedQueue = queue.filter(p => p.status === 'done');
+            const waitingCount = queue.filter(p => p.status === 'waiting').length;
+            const inProgressCount = queue.filter(p => p.status === 'in_progress').length;
 
-            const handleAction = (patientId, newStatus) => {
-                setData(prev => ({
-                    ...prev,
-                    queue: prev.queue.map(p =>
-                        p.id === patientId
-                            ? {
-                                ...p,
-                                status: newStatus,
-                                startedAt: newStatus === 'in_progress' ? Date.now() : p.startedAt,
-                                completedAt: newStatus === 'done' ? Date.now() : p.completedAt,
-                            }
-                            : p
-                    )
-                }));
+            const handleAction = async (patientId, newStatus) => {
+                const updates = {
+                    status: newStatus,
+                    ...(newStatus === 'in_progress' ? { startedAt: Date.now() } : {}),
+                    ...(newStatus === 'done' ? { completedAt: Date.now() } : {}),
+                };
+                await updatePatient(patientId, updates);
+                setQueue(prev => prev.map(p =>
+                    p.id === patientId
+                        ? { ...p, status: newStatus,
+                            startedAt: newStatus === 'in_progress' ? Date.now() : p.startedAt,
+                            completedAt: newStatus === 'done' ? Date.now() : p.completedAt }
+                        : p
+                ));
                 if (newStatus === 'done') addToast('Patiënt afgerond');
                 if (newStatus === 'in_progress') addToast('Patiënt gestart');
             };
 
-            const handleClearCompleted = () => {
-                setData(prev => ({ ...prev, queue: prev.queue.filter(p => p.status !== 'done') }));
+            const handleClearCompleted = async () => {
+                await deleteCompletedPatients();
+                setQueue(prev => prev.filter(p => p.status !== 'done'));
                 addToast('Afgeronde patiënten gewist');
             };
 
-            const handleResetQueue = () => {
-                setData(prev => ({
-                    ...prev,
-                    queue: [],
-                    settings: { ...prev.settings, createdDate: new Date().toISOString().split('T')[0] }
-                }));
+            const handleResetQueue = async () => {
+                await deleteAllTodayPatients();
+                setQueue([]);
                 setShowResetConfirm(false);
                 addToast('Wachtrij gereset');
             };
@@ -1160,7 +1175,7 @@
                     )}
 
                     {/* Reset Queue Button */}
-                    {data.queue.length > 0 && (
+                    {queue.length > 0 && (
                         <button
                             onClick={() => setShowResetConfirm(true)}
                             style={{
@@ -1346,17 +1361,18 @@
 
         // ─── App Router ───────────────────────────────────────────────
 
-        function App({ data, setData, route }) {
+        function App({ queue, setQueue, route }) {
             const [doctorAuthenticated, setDoctorAuthenticated] = useState(false);
+            const doctorPin = '1234';
 
             return (
                 <>
                     {route === '#doctor' ? (
                         !doctorAuthenticated
-                            ? <DoctorPinGate pin={data.settings.doctorPin} onAuth={() => setDoctorAuthenticated(true)} />
-                            : <DoctorView data={data} setData={setData} />
+                            ? <DoctorPinGate pin={doctorPin} onAuth={() => setDoctorAuthenticated(true)} />
+                            : <DoctorView queue={queue} setQueue={setQueue} />
                     ) : (
-                        <PatientView data={data} setData={setData} />
+                        <PatientView queue={queue} setQueue={setQueue} />
                     )}
                     <TabBar route={route} />
                 </>
@@ -1366,45 +1382,53 @@
         // ─── Root ─────────────────────────────────────────────────────
 
         function Root() {
-            const [data, setData] = useState(() => {
-                const loaded = loadData();
-                // Auto-reset if new day
-                const today = new Date().toISOString().split('T')[0];
-                if (loaded.settings.createdDate !== today) {
-                    const fresh = { queue: [], settings: { ...loaded.settings, createdDate: today } };
-                    saveData(fresh);
-                    return fresh;
-                }
-                return loaded;
-            });
+            const [queue, setQueue] = useState([]);
+            const [loading, setLoading] = useState(true);
             const route = useHashRoute();
 
-            // Persist to localStorage on change
-            useEffect(() => { saveData(data); }, [data]);
-
-            // Cross-tab sync via storage event
+            // Initial fetch from Supabase
             useEffect(() => {
-                const onStorage = (e) => {
-                    if (e.key === STORAGE_KEY && e.newValue) {
-                        try { setData(JSON.parse(e.newValue)); } catch {}
+                fetchQueue().then(q => {
+                    setQueue(q);
+                    setLoading(false);
+                });
+            }, []);
+
+            // Realtime subscription — refetch full queue on any change
+            useEffect(() => {
+                const channel = sb
+                    .channel('queue-changes')
+                    .on(
+                        'postgres_changes',
+                        { event: '*', schema: 'public', table: 'patients' },
+                        () => fetchQueue().then(q => setQueue(q))
+                    )
+                    .subscribe();
+                return () => sb.removeChannel(channel);
+            }, []);
+
+            // Re-sync when tab becomes visible (phone wakes up)
+            useEffect(() => {
+                const onVis = () => {
+                    if (document.visibilityState === 'visible') {
+                        fetchQueue().then(q => setQueue(q));
                     }
                 };
-                window.addEventListener('storage', onStorage);
-                return () => window.removeEventListener('storage', onStorage);
+                document.addEventListener('visibilitychange', onVis);
+                return () => document.removeEventListener('visibilitychange', onVis);
             }, []);
 
-            // Polling fallback every 2s
-            useEffect(() => {
-                const interval = setInterval(() => {
-                    const fresh = loadData();
-                    setData(prev => JSON.stringify(prev) !== JSON.stringify(fresh) ? fresh : prev);
-                }, 2000);
-                return () => clearInterval(interval);
-            }, []);
+            if (loading) {
+                return (
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh' }}>
+                        <div className="heartbeat" style={{ width: '8px', height: '8px', borderRadius: '50%', background: 'var(--system-blue)' }} />
+                    </div>
+                );
+            }
 
             return (
                 <ToastProvider>
-                    <App data={data} setData={setData} route={route} />
+                    <App queue={queue} setQueue={setQueue} route={route} />
                 </ToastProvider>
             );
         }
