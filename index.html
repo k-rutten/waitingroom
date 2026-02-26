@@ -143,7 +143,7 @@
         }
     </style>
 </head>
-<body class="min-h-screen" style="background: #FAFAFA; padding-bottom: 72px;">
+<body class="min-h-screen" style="background: #FAFAFA;">
     <div id="root"></div>
 
     <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
@@ -413,6 +413,21 @@
                     background: 'linear-gradient(180deg, #F8FAFF 0%, #FBF8FF 30%, #FFFAF8 60%, #F8FFF8 100%)',
                     display: 'flex', flexDirection: 'column',
                 }}>
+                    {/* Doctor access icon — top right */}
+                    <a href="#doctor" style={{
+                        position: 'absolute', top: '12px', right: '12px', zIndex: 3,
+                        width: '44px', height: '44px', borderRadius: '50%',
+                        background: 'rgba(0,0,0,0.06)',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        textDecoration: 'none', color: 'rgba(60, 60, 67, 0.35)',
+                        transition: 'background 0.15s ease',
+                    }}>
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+                            <circle cx="12" cy="7" r="4"/>
+                        </svg>
+                    </a>
+
                     {/* Top text area */}
                     <div style={{
                         textAlign: 'center', paddingTop: 'max(60px, 12vh)',
@@ -615,23 +630,25 @@
                         )}
                     </div>
 
-                    <button
-                        onClick={onLeave}
-                        style={{
-                            width: '100%', height: '50px', borderRadius: '14px',
-                            background: 'transparent',
-                            color: 'var(--system-red)', border: '1.5px solid rgba(255, 59, 48, 0.2)',
-                            cursor: 'pointer',
-                            fontSize: '16px', fontWeight: 600,
-                            transition: 'transform 0.1s ease, background 0.15s ease',
-                            fontFamily: 'inherit',
-                        }}
-                        onMouseDown={e => { e.currentTarget.style.transform = 'scale(0.97)'; e.currentTarget.style.background = 'rgba(255, 59, 48, 0.04)'; }}
-                        onMouseUp={e => { e.currentTarget.style.transform = 'scale(1)'; e.currentTarget.style.background = 'transparent'; }}
-                        onMouseLeave={e => { e.currentTarget.style.transform = 'scale(1)'; e.currentTarget.style.background = 'transparent'; }}
-                    >
-                        Afmelden
-                    </button>
+                    {!isMyTurn && (
+                        <button
+                            onClick={onLeave}
+                            style={{
+                                width: '100%', height: '50px', borderRadius: '14px',
+                                background: 'transparent',
+                                color: 'var(--system-red)', border: '1.5px solid rgba(255, 59, 48, 0.2)',
+                                cursor: 'pointer',
+                                fontSize: '16px', fontWeight: 600,
+                                transition: 'transform 0.1s ease, background 0.15s ease',
+                                fontFamily: 'inherit',
+                            }}
+                            onMouseDown={e => { e.currentTarget.style.transform = 'scale(0.97)'; e.currentTarget.style.background = 'rgba(255, 59, 48, 0.04)'; }}
+                            onMouseUp={e => { e.currentTarget.style.transform = 'scale(1)'; e.currentTarget.style.background = 'transparent'; }}
+                            onMouseLeave={e => { e.currentTarget.style.transform = 'scale(1)'; e.currentTarget.style.background = 'transparent'; }}
+                        >
+                            Afmelden
+                        </button>
+                    )}
                 </div>
             );
         }
@@ -825,7 +842,21 @@
             };
 
             return (
-                <div className="fade-in" style={{ padding: '20px', maxWidth: '448px', margin: '0 auto' }}>
+                <div className="fade-in" style={{ padding: '20px', maxWidth: '448px', margin: '0 auto', position: 'relative' }}>
+                    {/* Back to patient home */}
+                    <a href="#patient" style={{
+                        position: 'absolute', top: '20px', left: '20px', zIndex: 3,
+                        display: 'flex', alignItems: 'center', gap: '4px',
+                        textDecoration: 'none', color: 'var(--system-blue)',
+                        fontSize: '17px', fontWeight: 400,
+                        fontFamily: 'inherit',
+                    }}>
+                        <svg width="10" height="17" viewBox="0 0 10 17" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M9 1L1 8.5L9 16"/>
+                        </svg>
+                        Terug
+                    </a>
+
                     <div style={{ paddingTop: 'max(80px, 16vh)', textAlign: 'center', paddingBottom: '36px' }}>
                         <div style={{
                             width: '64px', height: '64px', borderRadius: '20px',
@@ -1061,7 +1092,7 @@
             if (showQR) return <QRCodeView onBack={() => setShowQR(false)} />;
 
             return (
-                <div className="fade-in no-print" style={{ padding: '20px', maxWidth: '448px', margin: '0 auto', paddingBottom: '100px' }}>
+                <div className="fade-in no-print" style={{ padding: '20px', maxWidth: '448px', margin: '0 auto', paddingBottom: '32px' }}>
                     {/* Header */}
                     <div style={{ paddingTop: '48px', paddingBottom: '28px', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
                         <div>
@@ -1306,76 +1337,18 @@
             );
         }
 
-        // ─── Tab Bar ───────────────────────────────────────────────────
-
-        function TabBar({ route }) {
-            const isPatient = route !== '#doctor';
-            const isDoctor = route === '#doctor';
-
-            return (
-                <div className="no-print" style={{
-                    position: 'fixed', bottom: 0, left: 0, right: 0,
-                    background: 'rgba(255, 255, 255, 0.92)', backdropFilter: 'blur(20px)', WebkitBackdropFilter: 'blur(20px)',
-                    borderTop: '1px solid var(--system-gray5)',
-                    paddingBottom: 'env(safe-area-inset-bottom, 0px)',
-                    zIndex: 9000,
-                }}>
-                    <div style={{ display: 'flex', maxWidth: '448px', margin: '0 auto' }}>
-                        <a
-                            href="#patient"
-                            style={{
-                                flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center',
-                                padding: '8px 0 6px', textDecoration: 'none',
-                                color: isPatient ? 'var(--system-blue)' : 'var(--label-tertiary)',
-                                transition: 'color 0.2s ease',
-                            }}
-                        >
-                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
-                                <circle cx="12" cy="7" r="4"/>
-                            </svg>
-                            <span style={{ fontSize: '10px', fontWeight: 500, marginTop: '2px' }}>Patiënt</span>
-                        </a>
-                        <a
-                            href="#doctor"
-                            style={{
-                                flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center',
-                                padding: '8px 0 6px', textDecoration: 'none',
-                                color: isDoctor ? 'var(--system-blue)' : 'var(--label-tertiary)',
-                                transition: 'color 0.2s ease',
-                            }}
-                        >
-                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                                <rect x="3" y="3" width="18" height="18" rx="2"/>
-                                <path d="M9 3v18"/>
-                                <path d="M13 8h4"/>
-                                <path d="M13 12h4"/>
-                                <path d="M13 16h4"/>
-                            </svg>
-                            <span style={{ fontSize: '10px', fontWeight: 500, marginTop: '2px' }}>Arts</span>
-                        </a>
-                    </div>
-                </div>
-            );
-        }
-
         // ─── App Router ───────────────────────────────────────────────
 
         function App({ queue, setQueue, route }) {
             const [doctorAuthenticated, setDoctorAuthenticated] = useState(false);
             const doctorPin = '1234';
 
-            return (
-                <>
-                    {route === '#doctor' ? (
-                        !doctorAuthenticated
-                            ? <DoctorPinGate pin={doctorPin} onAuth={() => setDoctorAuthenticated(true)} />
-                            : <DoctorView queue={queue} setQueue={setQueue} />
-                    ) : (
-                        <PatientView queue={queue} setQueue={setQueue} />
-                    )}
-                    <TabBar route={route} />
-                </>
+            return route === '#doctor' ? (
+                !doctorAuthenticated
+                    ? <DoctorPinGate pin={doctorPin} onAuth={() => setDoctorAuthenticated(true)} />
+                    : <DoctorView queue={queue} setQueue={setQueue} />
+            ) : (
+                <PatientView queue={queue} setQueue={setQueue} />
             );
         }
 
